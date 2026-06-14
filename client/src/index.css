@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #fcfcfd;
+    --foreground: #09090b;
+
+    --card: #ffffff;
+    --card-foreground: #09090b;
+
+    --popover: #ffffff;
+    --popover-foreground: #09090b;
+
+    --primary: #059669; /* Emerald 600 */
+    --primary-foreground: #ffffff;
+
+    --secondary: #f4f4f5; /* Zinc 100 */
+    --secondary-foreground: #18181b;
+
+    --muted: #f4f4f5;
+    --muted-foreground: #71717a;
+
+    --accent: #eff6ff; /* Soft Blue */
+    --accent-foreground: #1d4ed8;
+
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+
+    --border: #e4e4e7;
+    --input: #e4e4e7;
+    --ring: #059669;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: #09090b; /* Zinc 950 */
+    --foreground: #fafafa; /* Zinc 50 */
+
+    --card: #0c0c0f; /* Slightly lighter than page bg */
+    --card-foreground: #fafafa;
+
+    --popover: #0c0c0f;
+    --popover-foreground: #fafafa;
+
+    --primary: #10b981; /* Emerald 500 */
+    --primary-foreground: #09090b;
+
+    --secondary: #18181b; /* Zinc 900 */
+    --secondary-foreground: #fafafa;
+
+    --muted: #18181b;
+    --muted-foreground: #a1a1aa;
+
+    --accent: #1e3a8a; /* Deep blue background */
+    --accent-foreground: #93c5fd;
+
+    --destructive: #7f1d1d;
+    --destructive-foreground: #fafafa;
+
+    --border: #1e1e24;
+    --input: #1e1e24;
+    --ring: #10b981;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    font-family: 'DM Sans', sans-serif;
+  }
+  body {
+    @apply bg-background text-foreground transition-colors duration-200;
+  }
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace !important;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(113, 113, 122, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(113, 113, 122, 0.4);
+}
+
+/* Card glassmorphism or hover states */
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  border-color: rgba(113, 113, 122, 0.3);
+}
