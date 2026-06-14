@@ -1,6 +1,9 @@
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { supabaseAdmin } from '../config/supabase';
+import { generateDynamicChallenges } from '../utils/challengeGenerator';
+import { localDb } from '../utils/localDb';
+import { unlockBadge } from '../utils/streakManager';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -10,12 +13,41 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response, ne
   try {
     const userId = req.user!.id;
 
+    // Fetch user details for college-specific challenge generation
+    const { data: userProfile } = await supabaseAdmin
+      .from('users')
+      .select('college_name')
+      .eq('id', userId)
+      .single();
+
+    // Trigger dynamic challenge generation cycle
+    await generateDynamicChallenges(userId, userProfile?.college_name || '');
+
     // Fetch all challenges
-    const { data: challenges, error: chalErr } = await supabaseAdmin
+    const { data: rawChallenges, error: chalErr } = await supabaseAdmin
       .from('challenges')
       .select('*');
 
     if (chalErr) throw chalErr;
+
+    // Filter expired challenges and clean up description tag
+    const nowStr = new Date().toISOString().split('T')[0];
+    const challenges = (rawChallenges || []).filter(chal => {
+      const match = chal.description.match(/\[Expires:\s*([\d\-]+)\]/);
+      if (match) {
+        const expiryDate = match[1];
+        if (nowStr > expiryDate) {
+          return false; // Filter out expired challenge
+        }
+      }
+      return true;
+    }).map(chal => {
+      // Remove the expiry tag from description for clean display
+      return {
+        ...chal,
+        description: chal.description.replace(/\s*\[Expires:\s*[\d\-]+\]/, '').trim()
+      };
+    });
 
     // Fetch user joined challenges
     const { data: joined, error: joinedErr } = await supabaseAdmin
@@ -203,6 +235,17 @@ router.post('/complete/:id', requireAuth, async (req: AuthenticatedRequest, res:
       details: { challenge_id: challengeId, points_earned: challenge.points }
     });
 
+    // 3.5 Update community team scores & challenge streaks
+    localDb.addTeamPoints(userId, challenge.points);
+    const currentStreaks = localDb.getStreaks(userId);
+    localDb.updateStreaks(userId, {
+      challengeStreak: currentStreaks.challengeStreak + 1,
+      lastChallengeCompleted: new Date().toISOString().split('T')[0]
+    });
+
+    // Award Challenge Finisher badge
+    await unlockBadge(userId, 'Challenge Finisher');
+
     // 4. Check achievements thresholds
     // Retrieve how many challenges completed
     const { count: completedCount, error: countErr } = await supabaseAdmin
@@ -234,6 +277,11 @@ router.post('/complete/:id', requireAuth, async (req: AuthenticatedRequest, res:
             unlockedBadge = warriorAch.name;
           }
         }
+      }
+
+      // Check Challenge Master
+      if (completedCount >= 10) {
+        await unlockBadge(userId, 'Challenge Master');
       }
 
       // Achievement Check 2: Sustainability Champion (1000 points)

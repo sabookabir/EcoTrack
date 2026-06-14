@@ -42,3 +42,6 @@ server/.env
 walkthrough.md
 task.md
 implementation_plan.md
+
+# Local Database files
+/server/data/*.json

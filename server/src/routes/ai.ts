@@ -198,4 +198,183 @@ Keep up the work! Joining Eco Challenges on the platform will reward you with XP
   }
 });
 
+// GET /api/ai/forecast - Carbon forecasting, scenarios and anomaly detection
+router.get('/forecast', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const userId = req.user!.id;
+
+    // 1. Fetch user entries
+    const { data: entries, error } = await supabaseAdmin
+      .from('carbon_entries')
+      .select('*')
+      .order('entry_date', { ascending: true });
+
+    if (error) throw error;
+
+    if (!entries || entries.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          hasData: false,
+          projections: { statusQuoMonth: 0, statusQuoYear: 0, sustainableMonth: 0, sustainableYear: 0 },
+          anomalies: [],
+          actionPlan: ["Please log carbon footprint entries to generate personalized AI forecasts."],
+          recommendedChallenges: []
+        }
+      });
+    }
+
+    const count = entries.length;
+    const totals = entries.map(e => Number(e.total_co2_kg));
+    const avgDaily = totals.reduce((sum, val) => sum + val, 0) / count;
+
+    // Averages per category
+    let totalTransport = 0, totalElectricity = 0, totalFood = 0, totalShopping = 0, totalWaste = 0;
+    entries.forEach(e => {
+      const br = calculateCarbonEmissions({
+        transport_car: e.transport_car,
+        transport_bike: e.transport_bike,
+        transport_bus: e.transport_bus,
+        transport_train: e.transport_train,
+        transport_walking: e.transport_walking,
+        electricity_kwh: e.electricity_kwh,
+        food_habit: e.food_habit,
+        shopping_habits: e.shopping_habits,
+        waste_kg: e.waste_kg
+      });
+      totalTransport += br.transport;
+      totalElectricity += br.electricity;
+      totalFood += br.food;
+      totalShopping += br.shopping;
+      totalWaste += br.waste;
+    });
+
+    const categoryAverages = {
+      transport: totalTransport / count,
+      electricity: totalElectricity / count,
+      food: totalFood / count,
+      shopping: totalShopping / count,
+      waste: totalWaste / count
+    };
+
+    // Scenarios data points (Status Quo vs Sustainable path)
+    const statusQuoMonth = avgDaily * 30.4;
+    const statusQuoYear = avgDaily * 365.25;
+    
+    // Target sustainable reduction path (-35%)
+    const sustainableMonth = statusQuoMonth * 0.65;
+    const sustainableYear = statusQuoYear * 0.65;
+
+    // 2. Anomaly Detection
+    const anomalies: Array<{ date: string; message: string; severity: 'warning' | 'info' }> = [];
+    if (count >= 3) {
+      const rollingAvg = totals.slice(-4, -1).reduce((s, v) => s + v, 0) / Math.min(3, count - 1);
+      const latestVal = totals[count - 1];
+
+      if (latestVal > rollingAvg * 2.0) {
+        anomalies.push({
+          date: entries[count - 1].entry_date,
+          message: `Emissions spike detected! Daily carbon footprint was ${(latestVal / (rollingAvg || 1)).toFixed(1)}x higher than your recent rolling average.`,
+          severity: 'warning'
+        });
+      }
+    }
+
+    // 3. Recommended Challenges mapping based on highest categories
+    const highestCategory = Object.entries(categoryAverages).reduce(
+      (max, [cat, val]) => (val > max.val ? { cat, val } : max),
+      { cat: 'none', val: -1 }
+    );
+
+    const recommendedChallenges: string[] = [];
+    if (highestCategory.cat === 'transport') {
+      recommendedChallenges.push('Pedal Power Challenge', 'Ride the Rails Week');
+    } else if (highestCategory.cat === 'electricity') {
+      recommendedChallenges.push('Unplug Standby Appliances', 'Summer AC Offset');
+    } else if (highestCategory.cat === 'food') {
+      recommendedChallenges.push('Plant-Based Weekend', 'Meatless Mondays');
+    } else if (highestCategory.cat === 'waste') {
+      recommendedChallenges.push('Food Compost Champion', 'Zero Single-Use Plastics');
+    } else {
+      recommendedChallenges.push('Earth Day Global Mission');
+    }
+
+    // 4. Generate Action Plan & Insights text (Gemini call or fallback)
+    const geminiKey = process.env.GEMINI_API_KEY;
+    let actionPlan: string[] = [];
+    let scenarioText = '';
+
+    if (geminiKey && geminiKey !== 'your-gemini-api-key' && geminiKey.trim() !== '') {
+      try {
+        const genAI = new GoogleGenerativeAI(geminiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+        const prompt = `
+Analyze this carbon profile:
+- Daily Average: ${avgDaily.toFixed(2)} kg CO2e
+- Highest Category: ${highestCategory.cat} (${highestCategory.val.toFixed(2)} kg CO2e)
+- Current anomalies: ${anomalies.map(a => a.message).join('; ') || 'None'}
+
+Provide exactly 3 bullet points for a Weekly Action Plan to help them transition to a sustainable path. Return ONLY a JSON string array of 3 actionable elements (e.g. ["Walk to campus on short trips", "Unplug items overnight", "Switch to local meals"]). Do not output markdown, just the raw JSON array string.
+`;
+
+        const result = await model.generateContent(prompt);
+        const parsed = JSON.parse(result.response.text().trim().replace(/^```json/, '').replace(/```$/, '').trim());
+        if (Array.isArray(parsed)) {
+          actionPlan = parsed;
+        }
+      } catch (err) {
+        logger.error(`AI forecast insights generator failed: ${(err as Error).message}`);
+      }
+    }
+
+    // Fallbacks
+    if (actionPlan.length === 0) {
+      if (highestCategory.cat === 'transport') {
+        actionPlan = [
+          'Choose carpooling or public transit to cut transportation costs and fuel by 30%.',
+          'Use walking or cycling for small local trips under 3km.',
+          'Adopt smooth braking and avoid engine idling during traffic stoplights.'
+        ];
+      } else if (highestCategory.cat === 'electricity') {
+        actionPlan = [
+          'Unplug phantom energy draws (chargers, microwaves, screens) when sleeping.',
+          'Switch old lighting to LED fixtures which consume 80% less power.',
+          'Set home temperatures 1-2 degrees closer to ambient outside air.'
+        ];
+      } else {
+        actionPlan = [
+          'Try implementing Meatless Mondays to slash diet methane intensity.',
+          'Buy groceries locally to cut logistics transportation miles.',
+          'Rigourously compost organic wastes to avoid landfill emissions.'
+        ];
+      }
+    }
+
+    scenarioText = avgDaily > 3.0 
+      ? `If you follow your current Status Quo path, your yearly footprint will reach ${Math.round(statusQuoYear)} kg CO₂e. Transitioning to the Sustainable Action path will save roughly ${Math.round(statusQuoYear - sustainableYear)} kg CO₂e and support climate goals.`
+      : `Outstanding! Your current average daily footprint meets the global sustainable baseline. Keeping this trend will save over ${Math.round(statusQuoYear - sustainableYear)} kg CO₂e compared to high-intensity benchmarks.`;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        hasData: true,
+        projections: {
+          statusQuoMonth: Math.round(statusQuoMonth * 100) / 100,
+          statusQuoYear: Math.round(statusQuoYear * 100) / 100,
+          sustainableMonth: Math.round(sustainableMonth * 100) / 100,
+          sustainableYear: Math.round(sustainableYear * 100) / 100
+        },
+        anomalies,
+        actionPlan,
+        recommendedChallenges,
+        scenarioText
+      },
+      message: 'AI carbon forecast compiled successfully'
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

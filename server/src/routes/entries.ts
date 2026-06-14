@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { supabaseAdmin } from '../config/supabase';
 import { calculateCarbonEmissions } from '../utils/carbonCalculator';
+import { processLogGamification } from '../utils/streakManager';
 import logger from '../utils/logger';
+
 
 const router = Router();
 
@@ -171,6 +173,9 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
         }
       }
     }
+
+    // 4. Update streaks & check achievements / collectibles
+    await processLogGamification(userId, entry_date, breakdown.total, breakdown);
 
     res.status(200).json({
       success: true,

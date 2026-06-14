@@ -12,7 +12,13 @@ import leaderboardRouter from './routes/leaderboard';
 import aiRouter from './routes/ai';
 import reportsRouter from './routes/reports';
 import adminRouter from './routes/admin';
+import communitiesRouter from './routes/communities';
+import collectiblesRouter from './routes/collectibles';
 import logger from './utils/logger';
+
+
+import { seedAchievements } from './utils/seeder';
+
 
 dotenv.config();
 
@@ -73,11 +79,14 @@ app.use('/api/leaderboard', leaderboardRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/communities', communitiesRouter);
+app.use('/api/collectibles', collectiblesRouter);
 
 // Centralized error handling middleware (must be defined last)
 app.use(errorHandler);
 
 // Start Server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   logger.info(`Server listening in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  await seedAchievements();
 });
