@@ -1,0 +1,44 @@
+services:
+  # 1. EcoTrack AI Backend Node/Express Web Service
+  - type: web
+    name: ecotrack-backend
+    env: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: SUPABASE_URL
+        sync: false # User will fill this in Render UI
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # 2. EcoTrack AI Frontend Static Site
+  - type: web
+    name: ecotrack-frontend
+    env: static
+    rootDir: client
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    routes:
+      # Rewrite all routes to index.html for React Router single-page navigation compatibility
+      - type: rewrite
+        from: /*
+        to: /index.html
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_BACKEND_URL
+        sync: false # Put backend Render URL here + '/api' (e.g., https://ecotrack-backend.onrender.com/api)
